@@ -121,6 +121,11 @@ static bool test_thead_mvendorid(RISCVCPU *cpu)
     return cpu->cfg.mvendorid == THEAD_VENDOR_ID;
 }
 
+static bool test_thead_fxcr(RISCVCPU *cpu)
+{
+    return test_thead_mvendorid(cpu) && !cpu->cfg.ext_xame;
+}
+
 static RISCVException read_th_mxstatus(CPURISCVState *env, int csrno,
                                        target_ulong *val)
 {
@@ -427,7 +432,7 @@ const RISCVCSR th_csr_list[] = {
     },
     {
         .csrno = CSR_TH_FXCR,
-        .insertion_test = test_thead_mvendorid,
+        .insertion_test = test_thead_fxcr,
         .csr_ops = { "th.fxcr", any, read_unimp_th_csr }
     },
     { }

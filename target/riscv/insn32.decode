@@ -61,6 +61,28 @@
 &mop5 imm rd rs1
 &mop3 imm rd rs1 rs2
 
+&ame_load md rs1
+&ame_stride md rs1 rs2
+&ame_agettyp ad rd
+&ame_asettyp ad rs1
+&ame_mgettyp ms1 rd
+&ame_msettyp md rs1
+&ame_acquire rd rs1
+&ame_acc ad
+&ame_mmulacc ms2 ms1 acc
+&ame_mmov_ma md acc
+&ame_mmov_am acc ms
+&ame_mmov_mm md ms
+&ame_mreg md
+&ame_bcast md rs1 rs2
+&ame_conv md rs1
+&ame_mconv_debug md rs1 rs2
+&ame_xconv_debug rd rs1 rs2
+&ame_pack md rs1 rs2
+&ame_ew md ms1 ms2
+&ame_ew_x md rs1 ms2
+&ame_zip ms1 ms2
+
 # Formats 32:
 @r       .......   ..... ..... ... ..... ....... &r                %rs2 %rs1 %rd
 @i       ............    ..... ... ..... ....... &i      imm=%imm_i     %rs1 %rd
@@ -104,6 +126,27 @@
 
 @mop5 . . .. .. .... .. ..... ... ..... ....... &mop5 imm=%imm_mop5 %rd %rs1
 @mop3 . . .. .. . ..... ..... ... ..... ....... &mop3 imm=%imm_mop3 %rd %rs1 %rs2
+@ame_load ....... ..... ..... ... ..... ....... &ame_load md=%rd %rs1
+@ame_stride ....... ..... ..... ... ..... ....... &ame_stride md=%rd %rs1 %rs2
+@ame_agettyp ....... ..... ..... ... ..... ....... &ame_agettyp ad=%rs1 %rd
+@ame_asettyp ....... ..... ..... ... ..... ....... &ame_asettyp ad=%rd %rs1
+@ame_mgettyp ....... ..... ..... ... ..... ....... &ame_mgettyp ms1=%rs1 %rd
+@ame_msettyp ....... ..... ..... ... ..... ....... &ame_msettyp md=%rd %rs1
+@ame_acquire ....... ..... ..... ... ..... ....... &ame_acquire %rd %rs1
+@ame_acc ....... ..... ..... ... ..... ....... &ame_acc ad=%rd
+@ame_mmulacc ....... ..... ..... ... ..... ....... &ame_mmulacc ms2=%rs2 ms1=%rs1 acc=%rd
+@ame_mmov_ma ....... ..... ..... ... ..... ....... &ame_mmov_ma md=%rd acc=%rs1
+@ame_mmov_am ....... ..... ..... ... ..... ....... &ame_mmov_am acc=%rd ms=%rs1
+@ame_mmov_mm ....... ..... ..... ... ..... ....... &ame_mmov_mm md=%rd ms=%rs1
+@ame_mreg ....... ..... ..... ... ..... ....... &ame_mreg md=%rd
+@ame_bcast ....... ..... ..... ... ..... ....... &ame_bcast md=%rd %rs2 %rs1
+@ame_conv ....... ..... ..... ... ..... ....... &ame_conv md=%rd %rs1
+@ame_mconv_debug ....... ..... ..... ... ..... ....... &ame_mconv_debug md=%rd %rs2 %rs1
+@ame_xconv_debug ....... ..... ..... ... ..... ....... &ame_xconv_debug rd=%rd %rs2 %rs1
+@ame_pack ....... ..... ..... ... ..... ....... &ame_pack md=%rd %rs2 %rs1
+@ame_ew    ....... ..... ..... ... ..... ....... &ame_ew md=%rd ms1=%rs1 ms2=%rs2
+@ame_ew_x  ....... ..... ..... ... ..... ....... &ame_ew_x md=%rd rs1=%rs1 ms2=%rs2
+@ame_zip   ....... ..... ..... ... ..... ....... &ame_zip ms1=%rs1 ms2=%rs2
 
 # Formats 64:
 @sh5     .......  ..... .....  ... ..... ....... &shift  shamt=%sh5      %rs1 %rd
@@ -1012,6 +1055,146 @@ vaesdm_vs   101001 1 ..... 00000 010 ..... 1110111 @r2_vm_1
 vaesz_vs    101001 1 ..... 00111 010 ..... 1110111 @r2_vm_1
 vaeskf1_vi  100010 1 ..... ..... 010 ..... 1110111 @r_vm_1
 vaeskf2_vi  101010 1 ..... ..... 010 ..... 1110111 @r_vm_1
+
+# *** Attached Matrix Extension ***
+mabs_ew      1010001 00100 ..... 000 ..... 0101011 @ame_conv
+mabsdiff_ew  0000000 ..... ..... 000 ..... 0101011 @ame_ew
+mabsdiff_ew_x 0000001 ..... ..... 000 ..... 0101011 @ame_ew_x
+madd_ew      0000010 ..... ..... 000 ..... 0101011 @ame_ew
+madd_ew_x    0000011 ..... ..... 000 ..... 0101011 @ame_ew_x
+mhdiff_ew    0000100 ..... ..... 000 ..... 0101011 @ame_ew
+mhdiff_ew_x  0000101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmax_ew      0000110 ..... ..... 000 ..... 0101011 @ame_ew
+mmax_ew_x    0000111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmean_ew     0001000 ..... ..... 000 ..... 0101011 @ame_ew
+mmean_ew_x   0001001 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmin_ew      0001010 ..... ..... 000 ..... 0101011 @ame_ew
+mmin_ew_x    0001011 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmul_ew      0001100 ..... ..... 000 ..... 0101011 @ame_ew
+mmul_ew_x    0001101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmulacc_ew   0001110 ..... ..... 000 ..... 0101011 @ame_ew
+mmulacc_ew_x 0001111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmulaccneg_ew 0010000 ..... ..... 000 ..... 0101011 @ame_ew
+mmulaccneg_ew_x 0010001 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmuladd_ew   0010010 ..... ..... 000 ..... 0101011 @ame_ew
+mmuladd_ew_x 0010011 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmulneg_ew   0010100 ..... ..... 000 ..... 0101011 @ame_ew
+mmulneg_ew_x 0010101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mmulsub_ew   0010110 ..... ..... 000 ..... 0101011 @ame_ew
+mmulsub_ew_x 0010111 ..... ..... 000 ..... 0101011 @ame_ew_x
+msub_ew      0011000 ..... ..... 000 ..... 0101011 @ame_ew
+msub_ew_x    0011001 ..... ..... 000 ..... 0101011 @ame_ew_x
+agettyp     1010001 00000 ..... 000 ..... 0101011 @ame_agettyp
+asettyp     1010001 00001 ..... 000 ..... 0101011 @ame_asettyp
+mgettyp     1010001 00010 ..... 000 ..... 0101011 @ame_mgettyp
+msettyp     1010001 00011 ..... 000 ..... 0101011 @ame_msettyp
+mls_1r      1010001 10110 ..... 000 ..... 0101011 @ame_load
+mls_cm      1010001 10111 ..... 000 ..... 0101011 @ame_load
+mls_rm      1010001 11000 ..... 000 ..... 0101011 @ame_load
+mss_1r      1010001 11001 ..... 000 ..... 0101011 @ame_load
+mss_cm      1010001 11010 ..... 000 ..... 0101011 @ame_load
+mss_rm      1010001 11011 ..... 000 ..... 0101011 @ame_load
+mls_st      1010100 ..... ..... 000 ..... 0101011 @ame_stride
+mls_tst     1010101 ..... ..... 000 ..... 0101011 @ame_stride
+mss_st      1010110 ..... ..... 000 ..... 0101011 @ame_stride
+mss_tst     1010111 ..... ..... 000 ..... 0101011 @ame_stride
+ame_acquire 1010010 01001 ..... 000 ..... 0101011 @ame_acquire
+ame_release 1010010 01010 00000 000 00000 0101011
+mzero_2d_acc 1010011 00000 00000 000 ..... 0101011 @ame_acc
+mzero_2d_m   1010011 00000 00001 000 ..... 0101011 @ame_mreg
+mcolid_ew    1010011 00000 00010 000 ..... 0101011 @ame_mreg
+mrowid_ew    1010011 00000 00011 000 ..... 0101011 @ame_mreg
+mmulacc_2d      1001010 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmulaccneg_2d   1001011 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmulatacc_2d    1001101 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmulataccneg_2d 1001110 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmulbtacc_2d    1001111 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmulbtaccneg_2d 1010000 ..... ..... 000 ..... 0101011 @ame_mmulacc
+mmov_ma      1010001 11100 ..... 000 ..... 0101011 @ame_mmov_ma
+mmov_am      1010001 11101 ..... 000 ..... 0101011 @ame_mmov_am
+mmov_mm      1010001 11110 ..... 000 ..... 0101011 @ame_mmov_mm
+mand_ew      0011010 ..... ..... 000 ..... 0101011 @ame_ew
+mand_ew_x    0011011 ..... ..... 000 ..... 0101011 @ame_ew_x
+mandnot_ew   0011100 ..... ..... 000 ..... 0101011 @ame_ew
+mandnot_ew_x 0011101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mor_ew       0011110 ..... ..... 000 ..... 0101011 @ame_ew
+mor_ew_x     0011111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mornot_ew    0100000 ..... ..... 000 ..... 0101011 @ame_ew
+mornot_ew_x  0100001 ..... ..... 000 ..... 0101011 @ame_ew_x
+msll_ew      0100010 ..... ..... 000 ..... 0101011 @ame_ew
+msll_ew_x    0100011 ..... ..... 000 ..... 0101011 @ame_ew_x
+msra_ew      0100100 ..... ..... 000 ..... 0101011 @ame_ew
+msra_ew_x    0100101 ..... ..... 000 ..... 0101011 @ame_ew_x
+msrl_ew      0100110 ..... ..... 000 ..... 0101011 @ame_ew
+msrl_ew_x    0100111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mxor_ew      0101000 ..... ..... 000 ..... 0101011 @ame_ew
+mxor_ew_x    0101001 ..... ..... 000 ..... 0101011 @ame_ew_x
+mcmovge_ew   0101010 ..... ..... 000 ..... 0101011 @ame_ew
+mcmovlt_ew   0101011 ..... ..... 000 ..... 0101011 @ame_ew
+mcmpge_ew    0101100 ..... ..... 000 ..... 0101011 @ame_ew
+mcmpge_ew_x  0101101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mcmplt_ew    0101110 ..... ..... 000 ..... 0101011 @ame_ew
+mcmplt_ew_x  0101111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mselge_ew    0110000 ..... ..... 000 ..... 0101011 @ame_ew
+msellt_ew    0110001 ..... ..... 000 ..... 0101011 @ame_ew
+mcolbcast_ew_x 0110010 ..... ..... 000 ..... 0101011 @ame_ew_x
+mcolgather_ew  0110011 ..... ..... 000 ..... 0101011 @ame_ew
+mcolshift_ew_x 0110100 ..... ..... 000 ..... 0101011 @ame_ew_x
+mrowbcast_ew_x 0110101 ..... ..... 000 ..... 0101011 @ame_ew_x
+mrowgather_ew  0110110 ..... ..... 000 ..... 0101011 @ame_ew
+mrowshift_ew_x 0110111 ..... ..... 000 ..... 0101011 @ame_ew_x
+mrowzip_ew      0111000 ..... ..... 000 00000 0101011 @ame_zip
+mrowscatadd_ew  0111001 ..... ..... 000 ..... 0101011 @ame_ew
+mcolscatadd_ew  0111010 ..... ..... 000 ..... 0101011 @ame_ew
+mrowscatmax_ew  0111011 ..... ..... 000 ..... 0101011 @ame_ew
+mcolscatmax_ew  0111100 ..... ..... 000 ..... 0101011 @ame_ew
+mbcast_m_x   1011000 ..... ..... 000 ..... 0101011 @ame_bcast
+mconv_ew     1010001 01101 ..... 000 ..... 0101011 @ame_conv
+mmove8_m_x   1011001 ..... ..... 000 ..... 0101011 @ame_mconv_debug
+mmove16_m_x  1011010 ..... ..... 000 ..... 0101011 @ame_mconv_debug
+mmove32_m_x  1011011 ..... ..... 000 ..... 0101011 @ame_mconv_debug
+mmove64_m_x  1011100 ..... ..... 000 ..... 0101011 @ame_mconv_debug
+mmove8_x_m   1011101 ..... ..... 000 ..... 0101011 @ame_xconv_debug
+mmove16_x_m  1011110 ..... ..... 000 ..... 0101011 @ame_xconv_debug
+mmove32_x_m  1011111 ..... ..... 000 ..... 0101011 @ame_xconv_debug
+mmove64_x_m  1100000 ..... ..... 000 ..... 0101011 @ame_xconv_debug
+mpack_ew_x   0111101 ..... ..... 000 ..... 0101011 @ame_pack
+munpack_ew_x 0111110 ..... ..... 000 ..... 0101011 @ame_pack
+mcolunzip_ew  1100001 ..... ..... 000 00000 0101011 @ame_zip
+mcolzip_ew    1100010 ..... ..... 000 00000 0101011 @ame_zip
+mrowunzip_ew  1100011 ..... ..... 000 00000 0101011 @ame_zip
+mprefixadd_col 1010001 11111 ..... 000 ..... 0101011 @ame_conv
+mprefixadd_row 1010010 00000 ..... 000 ..... 0101011 @ame_conv
+mprefixmax_col 1010010 00001 ..... 000 ..... 0101011 @ame_conv
+mprefixmax_row 1010010 00010 ..... 000 ..... 0101011 @ame_conv
+mreduceadd_col 1010010 00011 ..... 000 ..... 0101011 @ame_conv
+mreduceadd_row 1010010 00100 ..... 000 ..... 0101011 @ame_conv
+mreducemax_col 1010010 00101 ..... 000 ..... 0101011 @ame_conv
+mreducemax_row 1010010 00110 ..... 000 ..... 0101011 @ame_conv
+mreducemin_col 1010010 00111 ..... 000 ..... 0101011 @ame_conv
+mreducemin_row 1010010 01000 ..... 000 ..... 0101011 @ame_conv
+mrec_ew       1010001 10001 ..... 000 ..... 0101011 @ame_conv
+mrsqrt_ew     1010001 10010 ..... 000 ..... 0101011 @ame_conv
+msqrt_ew      1010001 10100 ..... 000 ..... 0101011 @ame_conv
+mldexp_ew     0111111 ..... ..... 000 ..... 0101011 @ame_ew
+mldexp_ew_x   1000000 ..... ..... 000 ..... 0101011 @ame_ew_x
+mldexpacc_ew  1000001 ..... ..... 000 ..... 0101011 @ame_ew
+mldexpacc_ew_x 1000010 ..... ..... 000 ..... 0101011 @ame_ew_x
+mrdexp_ew     1000101 ..... ..... 000 ..... 0101011 @ame_ew
+mrdexpacc_ew  1000110 ..... ..... 000 ..... 0101011 @ame_ew
+mcos_ew       1010001 01110 ..... 000 ..... 0101011 @ame_conv
+mexp2_ew      1010001 01111 ..... 000 ..... 0101011 @ame_conv
+mlog2_ew      1010001 10000 ..... 000 ..... 0101011 @ame_conv
+msin_ew       1010001 10011 ..... 000 ..... 0101011 @ame_conv
+mtanh_ew      1010001 10101 ..... 000 ..... 0101011 @ame_conv
+mfrintm_ew    1010001 00101 ..... 000 ..... 0101011 @ame_conv
+mfrintn_ew    1010001 00110 ..... 000 ..... 0101011 @ame_conv
+mfrintp_ew    1010001 00111 ..... 000 ..... 0101011 @ame_conv
+mfrintz_ew    1010001 01000 ..... 000 ..... 0101011 @ame_conv
+mlog2sub_ew  1000011 ..... ..... 000 ..... 0101011 @ame_ew
+mlog2sub_ew_x 1000100 ..... ..... 000 ..... 0101011 @ame_ew_x
+msublog2_ew  1000111 ..... ..... 000 ..... 0101011 @ame_ew
+msublog2_ew_x 1001000 ..... ..... 000 ..... 0101011 @ame_ew_x
 
 # *** Zvknh vector crypto extension ***
 vsha2ms_vv  101101 1 ..... ..... 010 ..... 1110111 @r_vm_1

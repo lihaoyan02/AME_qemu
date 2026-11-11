@@ -31,6 +31,18 @@ QEMU as a whole is released under the GNU General Public License,
 version 2. For full licensing details, consult the LICENSE file.
 
 
+RISC-V AME (Ztt v0.6)
+=====================
+
+This branch adds support for the Attached Matrix Extension (AME), based on
+Ztt v0.6, in the RISC-V TCG backend. Enable it with ``-cpu max,xame=true``.
+
+See `README.md <README.md>`_ for build instructions, guest initialization,
+CPU configuration, supported instructions and datatypes, and operator usage.
+The ``example/`` directory provides FP32 and INT8 GEMM, GELU, Softmax, MHA,
+FFN, RoPE, and RMSNorm operators with a shared bare-metal runtime.
+
+
 Documentation
 =============
 

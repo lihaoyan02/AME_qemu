@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  riscv64-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build pkg-config python3 python3-venv \
+            libglib2.0-dev libpixman-1-dev libfdt-dev zlib1g-dev \
+            gcc-riscv64-linux-gnu libc6-dev-riscv64-cross gdb-multiarch
+
+      - name: Configure RV64 emulators
+        run: |
+          mkdir -p build-ci
+          cd build-ci
+          ../configure \
+            --target-list=riscv64-softmmu,riscv64-linux-user \
+            --cross-cc-riscv64=riscv64-linux-gnu-gcc \
+            --gdb=gdb-multiarch \
+            --enable-download \
+            --enable-fdt=system \
+            --enable-plugins \
+            --enable-werror \
+            --disable-docs \
+            --disable-rust 2>&1 | tee configure.log
+
+      - name: Verify TCG test configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          build = Path('build-ci')
+          info = build / 'meson-info'
+          options = {item['name']: item['value'] for item in
+                     json.loads((info / 'intro-buildoptions.json').read_text())}
+          tests = json.loads((info / 'intro-tests.json').read_text())
+          targets = json.loads((info / 'intro-targets.json').read_text())
+          assert options['plugins'] is True, 'TCG plugins are disabled'
+          assert options['tcg_tests_cross_cc_riscv64'] == 'riscv64-linux-gnu-gcc'
+          assert Path(options['gdb']).name == 'gdb-multiarch'
+          for target in ('riscv64-linux-user', 'riscv64-softmmu'):
+              assert (build / f'{target}-config-target.h').is_file(), target
+              registered = [test for test in tests
+                            if f'qemu:tcg-{target}' in test['suite']]
+              assert registered, f'No TCG tests registered for {target}'
+              assert any('-plugin' in test['cmd'] for test in registered), target
+              guests = [item for item in targets
+                        if item['name'].startswith(target + '-')
+                        and item['name'].endswith('.test')]
+              assert guests, f'No guest binaries configured for {target}'
+              for guest in guests:
+                  assert any(source['compiler']
+                             and Path(source['compiler'][0]).name == 'riscv64-linux-gnu-gcc'
+                             and '-static' in source['compiler']
+                             for source in guest['target_sources']), guest['name']
+              print(f'{target}: {len(registered)} TCG tests, {len(guests)} static guests')
+          assert any('--gdb' in test['cmd'] and
+                     Path(test['cmd'][test['cmd'].index('--gdb') + 1]).name == 'gdb-multiarch'
+                     for test in tests if test['name'].startswith('riscv64-'))
+          PY
+
+      - name: Build QEMU and test plugins
+        id: build
+        run: make -C build-ci -j2 all test-plugins 2>&1 | tee build-ci/build.log
+
+      - name: Run default regression tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: make -C build-ci -j2 check 2>&1 | tee build-ci/check.log
+
+      - name: Run RV64 user and system TCG tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: make -C build-ci -j2 check-tcg V=1 2>&1 | tee build-ci/check-tcg.log
+
+      - name: Upload build and test logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: riscv64-logs
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build-ci/*.log
+            build-ci/meson-logs/
+            build-ci/tests/tcg/**/*.out
+            build-ci/tests/tcg/**/*.pout
+            build-ci/tests/tcg/**/*.err
+            build-ci/tests/functional/**/*.log
+            build-ci/tests/qemu-iotests/**/*.bad

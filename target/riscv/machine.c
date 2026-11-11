@@ -160,6 +160,49 @@ static const VMStateDescription vmstate_vector = {
     }
 };
 
+static bool ame_needed(void *opaque)
+{
+    RISCVCPU *cpu = opaque;
+
+    return cpu->cfg.ext_xame;
+}
+
+static int ame_pre_load(void *opaque)
+{
+    RISCVCPU *cpu = opaque;
+
+    if (!cpu->cfg.ext_xame) {
+        error_report("AME migration requires xame=true on the destination");
+        return -EINVAL;
+    }
+    return 0;
+}
+
+/* Geometry is immutable CPU configuration: reject incompatible receivers. */
+static const VMStateDescription vmstate_ame = {
+    .name = "cpu/ame",
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .needed = ame_needed,
+    .pre_load = ame_pre_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT16_EQUAL(cfg.ame_n, RISCVCPU),
+        VMSTATE_UINT16_EQUAL(cfg.ame_unit_bits, RISCVCPU),
+        VMSTATE_UINT16_EQUAL(cfg.ame_m_regs, RISCVCPU),
+        VMSTATE_UINT16_EQUAL(cfg.ame_acc_regs, RISCVCPU),
+        VMSTATE_BUFFER(env.mreg, RISCVCPU),
+        VMSTATE_UINT32_ARRAY(env.md, RISCVCPU, AME_MAX_M_REGS),
+        VMSTATE_BUFFER(env.acc, RISCVCPU),
+        VMSTATE_UINT32_ARRAY(env.accd, RISCVCPU, AME_MAX_ACC_REGS),
+        VMSTATE_UINT32(env.amestype, RISCVCPU),
+        VMSTATE_UINT32(env.amefflags, RISCVCPU),
+        VMSTATE_UINT32(env.amexsat, RISCVCPU),
+        VMSTATE_UINT32(env.amestatus, RISCVCPU),
+        VMSTATE_UINT32(env.ameown, RISCVCPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static bool pointermasking_needed(void *opaque)
 {
     return false;
@@ -638,6 +681,7 @@ const VMStateDescription vmstate_riscv_cpu = {
         &vmstate_pmp,
         &vmstate_hyper,
         &vmstate_vector,
+        &vmstate_ame,
         &vmstate_pointermasking,
         &vmstate_rv128,
 #ifdef CONFIG_KVM

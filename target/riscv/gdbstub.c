@@ -171,6 +171,58 @@ static int riscv_gdb_set_vector(CPUState *cs, uint8_t *mem_buf, int n)
     return 0;
 }
 
+static int riscv_gdb_get_ame(CPUState *cs, GByteArray *buf, int n)
+{
+    CPURISCVState *env = cpu_env(cs);
+
+    if (n < riscv_ame_mregs(env)) {
+        g_byte_array_append(buf, riscv_ame_mreg(env, n),
+                            riscv_ame_mreg_bytes(env));
+        return riscv_ame_mreg_bytes(env);
+    }
+    n -= riscv_ame_mregs(env);
+    if (n < riscv_ame_mregs(env)) {
+        return gdb_get_reg32(buf, env->md[n]);
+    }
+    n -= riscv_ame_mregs(env);
+    if (n < riscv_ame_accs(env)) {
+        g_byte_array_append(buf, riscv_ame_acc(env, n),
+                            riscv_ame_acc_bytes(env));
+        return riscv_ame_acc_bytes(env);
+    }
+    n -= riscv_ame_accs(env);
+    if (n < riscv_ame_accs(env)) {
+        return gdb_get_reg32(buf, env->accd[n]);
+    }
+    return 0;
+}
+
+static int riscv_gdb_set_ame(CPUState *cs, uint8_t *mem_buf, int n)
+{
+    CPURISCVState *env = cpu_env(cs);
+
+    if (n < riscv_ame_mregs(env)) {
+        memcpy(riscv_ame_mreg(env, n), mem_buf, riscv_ame_mreg_bytes(env));
+        return riscv_ame_mreg_bytes(env);
+    }
+    n -= riscv_ame_mregs(env);
+    if (n < riscv_ame_mregs(env)) {
+        env->md[n] = ldn(env, mem_buf, sizeof(env->md[n]));
+        return sizeof(env->md[n]);
+    }
+    n -= riscv_ame_mregs(env);
+    if (n < riscv_ame_accs(env)) {
+        memcpy(riscv_ame_acc(env, n), mem_buf, riscv_ame_acc_bytes(env));
+        return riscv_ame_acc_bytes(env);
+    }
+    n -= riscv_ame_accs(env);
+    if (n < riscv_ame_accs(env)) {
+        env->accd[n] = ldn(env, mem_buf, sizeof(env->accd[n]));
+        return sizeof(env->accd[n]);
+    }
+    return 0;
+}
+
 #ifdef CONFIG_TCG
 static int riscv_gdb_get_csr(CPUState *cs, GByteArray *buf, int n)
 {
@@ -343,6 +395,50 @@ static GDBFeature *ricsv_gen_dynamic_vector_feature(CPUState *cs, int base_reg)
     return &cpu->dyn_vreg_feature;
 }
 
+static GDBFeature *riscv_gen_dynamic_ame_feature(CPUState *cs, int base_reg)
+{
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+    GDBFeatureBuilder builder;
+    int i;
+
+    gdb_feature_builder_init(&builder, &cpu->dyn_ame_feature,
+                             "org.gnu.gdb.riscv.ame", "riscv-ame.xml",
+                             base_reg);
+    gdb_feature_builder_append_tag(
+        &builder, "<vector id=\"ame_m\" type=\"uint8\" count=\"%d\"/>",
+        riscv_ame_mreg_bytes(env));
+    gdb_feature_builder_append_tag(
+        &builder, "<vector id=\"ame_acc\" type=\"uint8\" count=\"%d\"/>",
+        riscv_ame_acc_bytes(env));
+
+    for (i = 0; i < riscv_ame_mregs(env); i++) {
+        gdb_feature_builder_append_reg(&builder, g_strdup_printf("m%d", i),
+                                       riscv_ame_mreg_bytes(env) * 8, i,
+                                       "ame_m", "matrix");
+    }
+    for (i = 0; i < riscv_ame_mregs(env); i++) {
+        gdb_feature_builder_append_reg(&builder, g_strdup_printf("md%d", i),
+                                       32, riscv_ame_mregs(env) + i,
+                                       "uint32", "matrix");
+    }
+    for (i = 0; i < riscv_ame_accs(env); i++) {
+        gdb_feature_builder_append_reg(&builder, g_strdup_printf("acc%d", i),
+                                       (riscv_ame_acc_bytes(env) * 8),
+                                       2 * riscv_ame_mregs(env) + i,
+                                       "ame_acc", "matrix");
+    }
+    for (i = 0; i < riscv_ame_accs(env); i++) {
+        gdb_feature_builder_append_reg(
+            &builder, g_strdup_printf("accd%d", i), 32,
+            2 * riscv_ame_mregs(env) + riscv_ame_accs(env) + i,
+            "uint32", "matrix");
+    }
+
+    gdb_feature_builder_end(&builder);
+    return &cpu->dyn_ame_feature;
+}
+
 void riscv_cpu_register_gdb_regs_for_features(CPUState *cs)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
@@ -358,6 +454,11 @@ void riscv_cpu_register_gdb_regs_for_features(CPUState *cs)
         gdb_register_coprocessor(cs, riscv_gdb_get_vector,
                                  riscv_gdb_set_vector,
                                  ricsv_gen_dynamic_vector_feature(cs, cs->gdb_num_regs));
+    }
+    if (cpu->cfg.ext_xame) {
+        gdb_register_coprocessor(cs, riscv_gdb_get_ame, riscv_gdb_set_ame,
+                                 riscv_gen_dynamic_ame_feature(
+                                     cs, cs->gdb_num_regs));
     }
 
 #ifdef CONFIG_TCG

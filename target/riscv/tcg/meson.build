@@ -8,6 +8,7 @@ riscv_ss.add(files(
   'csr.c',
   'crypto_helper.c',
   'fpu_helper.c',
+  'matrix_helper.c',
   'm128_helper.c',
   'op_helper.c',
   'translate.c',

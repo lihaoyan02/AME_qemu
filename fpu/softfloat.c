@@ -2704,6 +2704,23 @@ float64 float128_to_float64(float128 a, float_status *s)
     return float64_round_pack_canonical(&p64, s);
 }
 
+float16 float128_to_float16(float128 a, bool ieee, float_status *s)
+{
+    FloatParts128 p128 = float128_unpack_canonical(a, s);
+    FloatParts64 p64 = parts128_to_parts64(&p128, s);
+    const FloatFmt *fmt = ieee ? &float16_params : &float16_params_ahp;
+
+    return float16a_round_pack_canonical(&p64, s, fmt);
+}
+
+bfloat16 float128_to_bfloat16(float128 a, float_status *s)
+{
+    FloatParts128 p128 = float128_unpack_canonical(a, s);
+    FloatParts64 p64 = parts128_to_parts64(&p128, s);
+
+    return bfloat16_round_pack_canonical(&p64, s);
+}
+
 float128 float32_to_float128(float32 a, float_status *s)
 {
     FloatParts64 p64 = float32_unpack_canonical(a, s);

@@ -552,6 +552,9 @@ void riscv_cpu_swap_hypervisor_regs(CPURISCVState *env)
     if (riscv_has_ext(env, RVF)) {
         mstatus_mask |= MSTATUS_FS;
     }
+    if (riscv_cpu_cfg(env)->ext_xame) {
+        mstatus_mask |= MSTATUS_MS;
+    }
     bool current_virt = env->virt_enabled;
 
     /*

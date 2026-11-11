@@ -109,6 +109,121 @@ static RISCVException vs(CPURISCVState *env, int csrno)
     return RISCV_EXCP_ILLEGAL_INST;
 }
 
+static RISCVException ame(CPURISCVState *env, int csrno)
+{
+    return riscv_cpu_cfg(env)->ext_xame ? RISCV_EXCP_NONE
+                                        : RISCV_EXCP_ILLEGAL_INST;
+}
+
+static bool ame_csr(int csrno)
+{
+    return csrno == CSR_AMENLEN || csrno == CSR_AMEUDSZ ||
+           csrno == CSR_AMESTYPE || csrno == CSR_AMESTATUS ||
+           csrno == CSR_AMEOWN || csrno == CSR_AMEFFLAGS ||
+           csrno == CSR_AMEXSAT;
+}
+
+static RISCVException ame_csr_state_check(CPURISCVState *env, int csrno,
+                                           bool write)
+{
+    if (!ame_csr(csrno)) {
+        return RISCV_EXCP_NONE;
+    }
+
+#ifndef CONFIG_USER_ONLY
+    if ((env->mstatus & MSTATUS_MS) == 0) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+#endif
+
+    /* Writable context CSRs are accessible only by the current owner. */
+    if (write && csrno != CSR_AMENLEN && csrno != CSR_AMEUDSZ &&
+        csrno != CSR_AMEOWN && !(env->ameown & AMEOWN_OWNED)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_amestatus(CPURISCVState *env, int csrno,
+                                     target_ulong *val)
+{
+    *val = env->amestatus;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_amestatus(CPURISCVState *env, int csrno,
+                                      target_ulong val, uintptr_t ra)
+{
+    /* UN is write-zero-to-clear; writing one preserves the old value. */
+    env->amestatus &= val & AMESTATUS_UN;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_ameown(CPURISCVState *env, int csrno,
+                                  target_ulong *val)
+{
+    *val = env->ameown & AMEOWN_OWNED;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_amenlen(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    /* Read-only capability of this CPU model. */
+    *val = riscv_ame_n(env);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_ameudsz(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    /* Fixed implementation capability: one M-register unit, in bits. */
+    *val = riscv_cpu_cfg(env)->ame_unit_bits;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_amestype(CPURISCVState *env, int csrno,
+                                    target_ulong *val)
+{
+    *val = env->amestype;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_amestype(CPURISCVState *env, int csrno,
+                                     target_ulong val, uintptr_t ra)
+{
+    env->amestype = val;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_amefflags(CPURISCVState *env, int csrno,
+                                     target_ulong *val)
+{
+    *val = env->amefflags & AMEFSR_MASK;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_amefflags(CPURISCVState *env, int csrno,
+                                      target_ulong val, uintptr_t ra)
+{
+    env->amefflags = val & AMEFSR_MASK;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_amexsat(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = env->amexsat & AMEXSAT_SAT;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_amexsat(CPURISCVState *env, int csrno,
+                                    target_ulong val, uintptr_t ra)
+{
+    env->amexsat = val & AMEXSAT_SAT;
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException ctr(CPURISCVState *env, int csrno)
 {
     if ((csrno >= CSR_CYCLE && csrno <= CSR_INSTRET) ||
@@ -1964,7 +2079,8 @@ static uint64_t add_status_sd(RISCVMXL xl, uint64_t status)
 {
     if ((status & MSTATUS_FS) == MSTATUS_FS ||
         (status & MSTATUS_VS) == MSTATUS_VS ||
-        (status & MSTATUS_XS) == MSTATUS_XS) {
+        (status & MSTATUS_XS) == MSTATUS_XS ||
+        (status & MSTATUS_MS) == MSTATUS_MS) {
         switch (xl) {
         case MXL_RV32:
             return status | MSTATUS32_SD;
@@ -2070,6 +2186,11 @@ static RISCVException write_mstatus(CPURISCVState *env, int csrno,
     uint64_t mask = 0;
     RISCVMXL xl = riscv_cpu_mxl(env);
 
+    if (riscv_cpu_cfg(env)->ext_xame &&
+        (env->ameown & AMEOWN_OWNED) && !(val & MSTATUS_MS)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
     /*
      * MPP field have been made WARL since priv version 1.11. However,
      * legalization for it will not break any software running on 1.10.
@@ -2087,6 +2208,10 @@ static RISCVException write_mstatus(CPURISCVState *env, int csrno,
 
     if (riscv_has_ext(env, RVF)) {
         mask |= MSTATUS_FS;
+    }
+
+    if (riscv_cpu_cfg(env)->ext_xame) {
+        mask |= MSTATUS_MS;
     }
 
     if (riscv_cpu_cfg(env)->ext_zve32x) {
@@ -4218,6 +4343,9 @@ static RISCVException read_sstatus_i128(CPURISCVState *env, int csrno,
     if (env_archcpu(env)->cfg.ext_zicfilp) {
         mask |= SSTATUS_SPELP;
     }
+    if (riscv_cpu_cfg(env)->ext_xame) {
+        mask |= MSTATUS_MS;
+    }
     sstatus = env->mstatus & mask;
     *val = int128_make128(sstatus, add_status_sd(MXL_RV128, sstatus));
     return RISCV_EXCP_NONE;
@@ -4236,6 +4364,9 @@ static RISCVException read_sstatus(CPURISCVState *env, int csrno,
     }
     if (riscv_cpu_cfg(env)->ext_ssdbltrp) {
         mask |= SSTATUS_SDT;
+    }
+    if (riscv_cpu_cfg(env)->ext_xame) {
+        mask |= MSTATUS_MS;
     }
 
     *val = add_status_sd(riscv_cpu_sxl(env), env->mstatus & mask);
@@ -4258,6 +4389,9 @@ static RISCVException write_sstatus(CPURISCVState *env, int csrno,
     }
     if (riscv_cpu_cfg(env)->ext_ssdbltrp) {
         mask |= SSTATUS_SDT;
+    }
+    if (riscv_cpu_cfg(env)->ext_xame) {
+        mask |= MSTATUS_MS;
     }
     target_ulong newval = (env->mstatus & ~mask) | (val & mask);
     return write_mstatus(env, CSR_MSTATUS, newval, ra);
@@ -5841,6 +5975,12 @@ static inline RISCVException riscv_csrrw_check(CPURISCVState *env,
 {
     /* check privileges and return RISCV_EXCP_ILLEGAL_INST if check fails */
     bool read_only = get_field(csrno, 0xC00) == 3;
+
+    /* Ztt provisionally places these writable CSRs in custom CSR space. */
+    if (csrno == CSR_AMESTYPE || csrno == CSR_AMEFFLAGS ||
+        csrno == CSR_AMEXSAT) {
+        read_only = false;
+    }
     int csr_min_priv = csr_ops[csrno].min_priv_ver;
 
     /* ensure the CSR extension is enabled */
@@ -5851,6 +5991,11 @@ static inline RISCVException riscv_csrrw_check(CPURISCVState *env,
     /* ensure CSR is implemented by checking predicate */
     if (!csr_ops[csrno].predicate) {
         return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    RISCVException ame_state_ret = ame_csr_state_check(env, csrno, write);
+    if (ame_state_ret != RISCV_EXCP_NONE) {
+        return ame_state_ret;
     }
 
     /* privileged spec version check */
@@ -6161,6 +6306,15 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_VL]       = { "vl",       vs,     read_vl                    },
     [CSR_VTYPE]    = { "vtype",    vs,     read_vtype                 },
     [CSR_VLENB]    = { "vlenb",    vs,     read_vlenb                 },
+    /* Attached Matrix Extension CSR */
+    /* Capability CSRs are read-only; no write callback is provided. */
+    [CSR_AMENLEN]    = { "amenlen",    ame, read_amenlen                  },
+    [CSR_AMEUDSZ]    = { "ameudsz",    ame, read_ameudsz                  },
+    [CSR_AMESTYPE]   = { "amestype",   ame, read_amestype, write_amestype },
+    [CSR_AMESTATUS] = { "amestatus", ame, read_amestatus, write_amestatus },
+    [CSR_AMEOWN]    = { "ameown",    ame, read_ameown                    },
+    [CSR_AMEFFLAGS] = { "amefflags", ame, read_amefflags, write_amefflags },
+    [CSR_AMEXSAT]   = { "amexsat", ame, read_amexsat, write_amexsat },
     /* User Timers and Counters */
     [CSR_CYCLE]    = { "cycle",    ctr,    read_hpmcounter  },
     [CSR_INSTRET]  = { "instret",  ctr,    read_hpmcounter  },

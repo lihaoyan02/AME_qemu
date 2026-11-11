@@ -190,6 +190,22 @@ extern RISCVCPUImpliedExtsRule *riscv_multi_ext_implied_rules[];
 #define RV_MAX_MHPMEVENTS 32
 #define RV_MAX_MHPMCOUNTERS 32
 
+/* AME backing-store limits; active geometry is a per-CPU configuration. */
+#define AME_MAX_N 16
+#define AME_MAX_UNIT_BITS 128
+#define AME_MAX_M_REGS 32
+#define AME_MAX_ACC_REGS 16
+#define AME_MAX_DATATYPE_SIZE 128
+#define AME_MAX_M_REG_BYTES (AME_MAX_N * AME_MAX_N * AME_MAX_UNIT_BITS / 8)
+#define AME_MAX_ACC_REG_BYTES \
+    (AME_MAX_N * AME_MAX_N * AME_MAX_DATATYPE_SIZE / 8)
+#define AME_MAX_M_FILE_BYTES (AME_MAX_M_REGS * AME_MAX_M_REG_BYTES)
+/* Ztt 4.4: fixed scalar exponent type, independent of amestype. */
+#define AME_MAX_INT_DTYPE 0x40000080u /* Int128, RNU, non-saturating */
+#define AME_M_MIN_DATATYPE_SIZE 4
+#define AME_M_MAX_DATATYPE_SIZE 128
+#define AME_DATATYPE_RESERVED_MASK 0x07fffe00
+
 /*
  * The Debug 1.0 spec allows a humongous amount of triggers.  Section
  * "Enumeration" says: "The above algorithm reads back tselect so that
@@ -261,6 +277,17 @@ struct CPUArchState {
     uint8_t vxrm;
     uint8_t vxsat;
     bool vill;
+
+    /* Attached Matrix Extension register state. */
+    uint8_t mreg[AME_MAX_M_FILE_BYTES] QEMU_ALIGNED(16);
+    uint32_t md[AME_MAX_M_REGS];
+    uint8_t acc[AME_MAX_ACC_REGS * AME_MAX_ACC_REG_BYTES] QEMU_ALIGNED(16);
+    uint32_t accd[AME_MAX_ACC_REGS];
+    uint32_t amestype;
+    uint32_t amefflags;
+    uint32_t amexsat;
+    uint32_t amestatus;
+    uint32_t ameown;
 
     uint64_t pc;
     uint64_t load_res;
@@ -579,6 +606,7 @@ struct ArchCPU {
 
     GDBFeature dyn_csr_feature;
     GDBFeature dyn_vreg_feature;
+    GDBFeature dyn_ame_feature;
 
     /* Configuration Settings */
     RISCVCPUConfig cfg;
@@ -797,6 +825,57 @@ static inline RISCVMXL riscv_cpu_mxl(const CPURISCVState *env)
 static inline const RISCVCPUConfig *riscv_cpu_cfg(CPURISCVState *env)
 {
     return &env_archcpu(env)->cfg;
+}
+
+static inline unsigned riscv_ame_mregs(CPURISCVState *env)
+{
+    return riscv_cpu_cfg(env)->ame_m_regs;
+}
+
+static inline unsigned riscv_ame_accs(CPURISCVState *env)
+{
+    return riscv_cpu_cfg(env)->ame_acc_regs;
+}
+
+static inline unsigned riscv_ame_unit_bits(CPURISCVState *env)
+{
+    return riscv_cpu_cfg(env)->ame_unit_bits;
+}
+
+static inline unsigned riscv_ame_n(CPURISCVState *env)
+{
+    return riscv_cpu_cfg(env)->ame_n;
+}
+
+static inline unsigned riscv_ame_nelem(CPURISCVState *env)
+{
+    return riscv_ame_n(env) * riscv_ame_n(env);
+}
+
+static inline unsigned riscv_ame_mreg_bytes(CPURISCVState *env)
+{
+    return riscv_ame_nelem(env) * riscv_cpu_cfg(env)->ame_unit_bits / 8;
+}
+
+static inline unsigned riscv_ame_acc_bytes(CPURISCVState *env)
+{
+    return riscv_ame_nelem(env) * AME_MAX_DATATYPE_SIZE / 8;
+}
+
+static inline unsigned riscv_ame_mfile_bytes(CPURISCVState *env)
+{
+    return riscv_cpu_cfg(env)->ame_m_regs * riscv_ame_mreg_bytes(env);
+}
+
+/* Active registers are contiguous, with a stride determined by CPU geometry. */
+static inline uint8_t *riscv_ame_mreg(CPURISCVState *env, unsigned reg)
+{
+    return env->mreg + reg * riscv_ame_mreg_bytes(env);
+}
+
+static inline uint8_t *riscv_ame_acc(CPURISCVState *env, unsigned reg)
+{
+    return env->acc + reg * riscv_ame_acc_bytes(env);
 }
 
 #if !defined(CONFIG_USER_ONLY)

@@ -300,6 +300,7 @@ const RISCVIsaExtData isa_edata_arr[] = {
     ISA_EXT_DATA_ENTRY(svrsw60t59b, PRIV_VERSION_1_13_0, ext_svrsw60t59b),
     ISA_EXPERIMENTAL_EXT_DATA_ENTRY(svukte, PRIV_VERSION_1_13_0, ext_svukte),
     ISA_EXT_DATA_ENTRY(svvptc, PRIV_VERSION_1_13_0, ext_svvptc),
+    ISA_EXT_DATA_ENTRY(xame, PRIV_VERSION_1_13_0, ext_xame),
     ISA_EXT_DATA_ENTRY(xlrbr, PRIV_VERSION_1_13_0, ext_xlrbr),
     ISA_EXT_DATA_ENTRY(xmipscbop, PRIV_VERSION_1_12_0, ext_xmipscbop),
     ISA_EXT_DATA_ENTRY(xmipscmov, PRIV_VERSION_1_12_0, ext_xmipscmov),
@@ -991,7 +992,7 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
 #ifndef CONFIG_USER_ONLY
     env->misa_mxl = mcc->def->misa_mxl_max;
     env->priv = PRV_M;
-    env->mstatus &= ~(MSTATUS_MIE | MSTATUS_MPRV);
+    env->mstatus &= ~(MSTATUS_MIE | MSTATUS_MPRV | MSTATUS_MS);
     if (env->misa_mxl > MXL_RV32) {
         /*
          * The reset status of SXL/UXL is undefined, but mstatus is WARL
@@ -1099,6 +1100,16 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     /* Default NaN value: sign bit clear, frac msb set */
     set_float_default_nan_pattern(0b01000000, &env->fp_status);
     env->vill = true;
+
+    memset(env->mreg, 0, sizeof(env->mreg));
+    memset(env->md, 0, sizeof(env->md));
+    memset(env->acc, 0, sizeof(env->acc));
+    memset(env->accd, 0, sizeof(env->accd));
+    env->amestype = 0;
+    env->amefflags = 0;
+    env->amexsat = 0;
+    env->amestatus = 0;
+    env->ameown = 0;
 
 #ifndef CONFIG_USER_ONLY
 #ifdef CONFIG_TCG
@@ -1326,6 +1337,35 @@ void riscv_cpu_finalize_features(RISCVCPU *cpu, Error **errp)
     }
 }
 
+static bool riscv_cpu_validate_ame(RISCVCPU *cpu, Error **errp)
+{
+    const RISCVCPUConfig *cfg = &cpu->cfg;
+
+    if (!is_power_of_2(cfg->ame_n) || cfg->ame_n < 2 ||
+        cfg->ame_n > AME_MAX_N) {
+        error_setg(errp, "ame-n must be a power of two between 2 and %d",
+                   AME_MAX_N);
+        return false;
+    }
+    if (!is_power_of_2(cfg->ame_unit_bits) || cfg->ame_unit_bits < 4 ||
+        cfg->ame_unit_bits > AME_MAX_UNIT_BITS) {
+        error_setg(errp, "ame-unit-bits must be a power of two "
+                   "between 4 and %d",
+                   AME_MAX_UNIT_BITS);
+        return false;
+    }
+    if (cfg->ame_m_regs != 16 && cfg->ame_m_regs != 32) {
+        error_setg(errp, "ame-m-regs must be 16 or 32");
+        return false;
+    }
+    if (!is_power_of_2(cfg->ame_acc_regs) ||
+        cfg->ame_acc_regs > AME_MAX_ACC_REGS) {
+        error_setg(errp, "ame-acc-regs must be one of 1, 2, 4, 8, 16");
+        return false;
+    }
+    return true;
+}
+
 static void riscv_cpu_realize(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -1342,6 +1382,10 @@ static void riscv_cpu_realize(DeviceState *dev, Error **errp)
     riscv_cpu_finalize_features(cpu, &local_err);
     if (local_err != NULL) {
         error_propagate(errp, local_err);
+        return;
+    }
+
+    if (!riscv_cpu_validate_ame(cpu, errp)) {
         return;
     }
 
@@ -3083,6 +3127,11 @@ static const Property riscv_cpu_properties[] = {
 
     {.name = "vlen", .info = &prop_vlen},
     {.name = "elen", .info = &prop_elen},
+
+    DEFINE_PROP_UINT16("ame-n", RISCVCPU, cfg.ame_n, 4),
+    DEFINE_PROP_UINT16("ame-unit-bits", RISCVCPU, cfg.ame_unit_bits, 32),
+    DEFINE_PROP_UINT16("ame-m-regs", RISCVCPU, cfg.ame_m_regs, 32),
+    DEFINE_PROP_UINT16("ame-acc-regs", RISCVCPU, cfg.ame_acc_regs, 4),
 
     {.name = "cbom_blocksize", .info = &prop_cbom_blksize},
     {.name = "cbop_blocksize", .info = &prop_cbop_blksize},

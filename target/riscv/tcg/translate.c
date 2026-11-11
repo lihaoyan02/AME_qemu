@@ -748,6 +748,7 @@ static void mark_vs_dirty(DisasContext *ctx)
 static inline void mark_vs_dirty(DisasContext *ctx) { }
 #endif
 
+
 static void finalize_rvv_inst(DisasContext *ctx)
 {
     mark_vs_dirty(ctx);
@@ -1231,6 +1232,7 @@ static uint32_t opcode_at(DisasContextBase *dcbase, target_ulong pc)
 #include "insn_trans/trans_xmips.c.inc"
 #include "insn_trans/trans_xlrbr.c.inc"
 #include "insn_trans/trans_xsf.c.inc"
+#include "insn_trans/trans_ame.c.inc"
 
 /* Include the auto-generated decoder for 16 bit insn */
 #include "decode-insn16.c.inc"

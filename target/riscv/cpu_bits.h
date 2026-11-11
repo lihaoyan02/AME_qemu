@@ -63,6 +63,19 @@
 #define CSR_VTYPE           0xc21
 #define CSR_VLENB           0xc22
 
+/* Attached Matrix Extension CSRs */
+#define CSR_AMENLEN         0xcc0
+#define CSR_AMEUDSZ         0xcc1
+#define CSR_AMESTYPE        0xcc2
+#define CSR_AMESTATUS       0x800
+#define CSR_AMEOWN          0xcc3
+#define CSR_AMEFFLAGS       0xcc4
+#define CSR_AMEXSAT         0xcc5
+#define AMESTATUS_UN        BIT(0)
+#define AMEOWN_OWNED        BIT(0)
+#define AMEFSR_MASK         0x1f
+#define AMEXSAT_SAT         BIT(0)
+
 /* VCSR fields */
 #define VCSR_VXSAT_SHIFT    0
 #define VCSR_VXSAT          (0x1 << VCSR_VXSAT_SHIFT)
@@ -653,6 +666,8 @@
 #define MSTATUS_MPP         0x00001800
 #define MSTATUS_FS          0x00006000
 #define MSTATUS_XS          0x00018000
+/* Attached Matrix Extension state (Ztt): mstatus.MS[24:23]. */
+#define MSTATUS_MS          0x01800000
 #define MSTATUS_MPRV        0x00020000
 #define MSTATUS_SUM         0x00040000 /* since: priv-1.10 */
 #define MSTATUS_MXR         0x00080000
