@@ -94,12 +94,6 @@ The examples enable AME automatically, compare QEMU results with reference
 outputs, and audit the required AME instructions in the disassembly. The
 combined report is written to `example/build/reports/EXAMPLE_REPORT.md`.
 
-For AME configuration and implementation details, see
-[AME implementation notes](AME-README.md) (Chinese). See
-[CI checks and AME regression coverage](docs/ci-checks.md) (Chinese) for the
-configured checks, their coverage limits, and local test commands. For
-upstream instruction execution tests, see the focused
-[upstream test inventory](docs/upstream-instruction-tests.md) (Chinese).
 General QEMU documentation is introduced in [README.rst](README.rst).
 
 ## License

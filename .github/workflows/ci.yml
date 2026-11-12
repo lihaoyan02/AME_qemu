@@ -5,6 +5,19 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'all, riscv64-checks, or a profile from github_ci.py list'
+        type: string
+        default: all
+      functional:
+        description: 'Download public guest assets and run extended functional tests'
+        type: boolean
+        default: true
+      experimental:
+        description: 'Also run upstream flaky and disabled CFI profiles'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -18,7 +31,212 @@ defaults:
     shell: bash
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      linux: ${{ steps.matrix.outputs.linux }}
+      native: ${{ steps.matrix.outputs.native }}
+      has_linux: ${{ steps.matrix.outputs.has_linux }}
+      has_native: ${{ steps.matrix.outputs.has_native }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Check CI adapter
+        run: python3 -m unittest discover -s scripts/ci -p test_github_ci.py -v
+      - name: Select build profiles
+        id: matrix
+        env:
+          PROFILE: ${{ inputs.profile || 'all' }}
+          EXPERIMENTAL: ${{ inputs.experimental || false }}
+        run: |
+          args=(--profile "$PROFILE")
+          if [[ "$EXPERIMENTAL" == true ]]; then
+            args+=(--experimental)
+          fi
+          python3 scripts/ci/github_ci.py matrix "${args[@]}"
+
+  linux:
+    name: ${{ matrix.profile }}
+    needs: plan
+    if: needs.plan.outputs.has_linux == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    continue-on-error: ${{ matrix.advisory }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.linux) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Build environment and run repository checks
+        env:
+          PROFILE: ${{ matrix.profile }}
+          FUNCTIONAL: ${{ github.event_name != 'workflow_dispatch' || inputs.functional }}
+        run: |
+          args=()
+          if [[ "$FUNCTIONAL" != true ]]; then
+            args+=(--no-functional)
+          fi
+          python3 scripts/ci/github_ci.py run "$PROFILE" "${args[@]}"
+      - name: Upload logs and reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.profile }}-logs
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build-ci/ci-logs/
+            build-ci/config.log
+            build-ci/meson-logs/
+            build-ci/previous-source/build/meson-logs/
+            build-ci/coverage.xml
+            build-ci/docs-install/usr/local/share/doc/
+            build-ci/tests/functional/**/*.log
+            build-ci/tests/qemu-iotests/**/*.bad
+            build-ci/qemu-setup*.exe
+            ci-results/
+            HTML/
+            build-oss-fuzz/meson-logs/
+
+  native:
+    name: ${{ matrix.profile }}
+    needs: plan
+    if: needs.plan.outputs.has_native == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.native) }}
+    env:
+      PROFILE: ${{ matrix.profile }}
+      MSYSTEM: MINGW64
+      CHERE_INVOKING: 'yes'
+      CI_JOBS: '2'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Install macOS build and guest toolchains
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash bc bindgen bison ccache coreutils ctags dtc gettext \
+            glib gnutls libslirp llvm make meson ninja pixman pkgconf \
+            python-setuptools python3 rust zlib zstd \
+            arm-none-eabi-gcc aarch64-elf-gcc i686-elf-gcc x86_64-elf-gcc
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "MAKE=gmake" >> "$GITHUB_ENV"
+      - name: Install Windows MSYS2 build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syuu'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syuu'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -S --needed bison diffutils flex git grep make sed mingw-w64-x86_64-gcc mingw-w64-x86_64-glib2 mingw-w64-x86_64-libnfs mingw-w64-x86_64-libssh mingw-w64-x86_64-ninja mingw-w64-x86_64-pixman mingw-w64-x86_64-pkgconf mingw-w64-x86_64-python mingw-w64-x86_64-python-setuptools mingw-w64-x86_64-python-wheel mingw-w64-x86_64-rust mingw-w64-x86_64-rust-bindgen mingw-w64-x86_64-zstd'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and run native checks
+        shell: ${{ matrix.shell }}
+        run: python3 scripts/ci/github_ci.py run "$PROFILE"
+      - name: Upload native logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.profile }}-logs
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build-ci/ci-logs/
+            build-ci/config.log
+            build-ci/meson-logs/
+
+  python:
+    name: python-${{ matrix.version }}-${{ matrix.mode }}
+    if: github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'python'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '3.12'
+            mode: minreqs
+          - version: '3.12'
+            mode: dev
+          - version: '3.13'
+            mode: dev
+          - version: '3.14'
+            mode: dev
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Run existing Python lint tests
+        env:
+          PYTHON_VERSION: ${{ matrix.version }}
+          MODE: ${{ matrix.mode }}
+        run: |
+          mkdir -p build-ci
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" \
+            -e MODE="$MODE" "python:$PYTHON_VERSION-bookworm" \
+            sh -ec 'apt-get update && apt-get install -y --no-install-recommends make git libfuse2; make -C python "check-$MODE"' \
+            2>&1 | tee build-ci/python.log
+      - name: Upload Python log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: python-${{ matrix.version }}-${{ matrix.mode }}-logs
+          retention-days: 7
+          if-no-files-found: warn
+          path: build-ci/python.log
+
+  commits:
+    name: check-${{ matrix.mode }}
+    if: github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'commits'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: ${{ matrix.mode == 'patch' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [dco, patch]
+    steps:
+      - name: Check out contribution history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          submodules: false
+          fetch-depth: 0
+      - name: Check contribution commits
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          mkdir -p build-ci
+          python3 scripts/ci/github_ci.py commits "$MODE" 2>&1 | tee build-ci/commits.log
+      - name: Upload commit check log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: commits-${{ matrix.mode }}-logs
+          retention-days: 7
+          if-no-files-found: warn
+          path: build-ci/commits.log
+
   riscv64-checks:
+    if: github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'riscv64-checks'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

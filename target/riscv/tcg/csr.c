@@ -123,8 +123,7 @@ static bool ame_csr(int csrno)
            csrno == CSR_AMEXSAT;
 }
 
-static RISCVException ame_csr_state_check(CPURISCVState *env, int csrno,
-                                           bool write)
+static RISCVException ame_csr_state_check(CPURISCVState *env, int csrno)
 {
     if (!ame_csr(csrno)) {
         return RISCV_EXCP_NONE;
@@ -136,9 +135,10 @@ static RISCVException ame_csr_state_check(CPURISCVState *env, int csrno,
     }
 #endif
 
-    /* Writable context CSRs are accessible only by the current owner. */
-    if (write && csrno != CSR_AMENLEN && csrno != CSR_AMEUDSZ &&
-        csrno != CSR_AMEOWN && !(env->ameown & AMEOWN_OWNED)) {
+    /* All accesses to writable context CSRs require the current owner. */
+    if (!(env->ameown & AMEOWN_OWNED) &&
+        (csrno == CSR_AMESTYPE || csrno == CSR_AMESTATUS ||
+         csrno == CSR_AMEFFLAGS || csrno == CSR_AMEXSAT)) {
         return RISCV_EXCP_ILLEGAL_INST;
     }
     return RISCV_EXCP_NONE;
@@ -5993,7 +5993,7 @@ static inline RISCVException riscv_csrrw_check(CPURISCVState *env,
         return RISCV_EXCP_ILLEGAL_INST;
     }
 
-    RISCVException ame_state_ret = ame_csr_state_check(env, csrno, write);
+    RISCVException ame_state_ret = ame_csr_state_check(env, csrno);
     if (ame_state_ret != RISCV_EXCP_NONE) {
         return ame_state_ret;
     }
